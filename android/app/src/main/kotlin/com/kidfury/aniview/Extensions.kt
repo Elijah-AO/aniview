@@ -148,7 +148,10 @@ class Extensions(private val context: Context, engine: FlutterEngine) {
     private fun install(apk: File, fingerprint: String): List<Loaded> {
         val info = archiveInfo(apk, signatures = true)
         val signers = signers(info)
-        check(signers.isNotEmpty() && signers.all { it == fingerprint.lowercase() }) {
+        check(signers.isNotEmpty()) {
+            "Android returned no signing certificate for ${info.packageName}; the extension wasn't installed"
+        }
+        check(signers.all { it == fingerprint.lowercase() }) {
             "${info.packageName} isn't signed by the repo's key"
         }
         val target = File(dir, "${info.packageName}.apk")
@@ -204,11 +207,14 @@ class Extensions(private val context: Context, engine: FlutterEngine) {
         }.map { Loaded(info.packageName, version, it) }
     }
 
+    @Suppress("DEPRECATION")
     private fun archiveInfo(apk: File, signatures: Boolean): PackageInfo {
         val signing = when {
             !signatures -> 0
-            Build.VERSION.SDK_INT >= 28 -> PackageManager.GET_SIGNING_CERTIFICATES
-            else -> @Suppress("DEPRECATION") PackageManager.GET_SIGNATURES
+            // Fire OS 7 also needs GET_SIGNATURES to populate signingInfo.
+            Build.VERSION.SDK_INT >= 28 ->
+                PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SIGNATURES
+            else -> PackageManager.GET_SIGNATURES
         }
         return context.packageManager.getPackageArchiveInfo(apk.path, PackageManager.GET_META_DATA or signing)
             ?.apply { applicationInfo?.run { sourceDir = apk.path; publicSourceDir = apk.path } }
